@@ -1,5 +1,4 @@
-[Uploading index (33).html…]()
-<!doctype html>
+[Uploading index (35).html…]()<!doctype html>
 <html lang="et">
 <head>
 <meta charset="utf-8">
@@ -565,8 +564,14 @@ function buildPlayerShip() {
   const gear = new THREE.Group(); gear.visible = false; ship.add(gear);
   for (const [x, z] of [[-3.4, -5], [3.4, -5], [-3.4, 7], [3.4, 7]]) { const l = new THREE.Mesh(cylY(0.25, 2.6, 10), PM.dark); l.position.set(x, -3.3, z); gear.add(l); const f = new THREE.Mesh(cylY(0.7, 0.2, 14), PM.dark); f.position.set(x, -4.5, z); gear.add(f); }
   const rampM = new THREE.Mesh(tBox(1.7, 0.15, 7.9, 2), new THREE.MeshStandardMaterial({ map: floorTex(), roughness: 0.6, metalness: 0.5 }));
-  rampM.position.set(0, -LAND_H / 2, 14.25); rampM.rotation.x = Math.atan2(LAND_H, 6.5); gear.add(rampM);
-  shipFX.gear = gear;
+  rampM.position.set(0, -LAND_H / 2, 14.25); rampM.rotation.x = Math.atan2(LAND_H, 6.5); rampM.visible = false; ship.add(rampM);
+  shipFX.gear = gear; shipFX.ramp = rampM;
+  // atmosfääri kuumus nina ees
+  const flame = new THREE.Group(); flame.visible = false; ship.add(flame); shipFX.flame = [];
+  for (const [x, y, z, s, c] of [[0, 0, -16, 18, '#ff7a2a'], [0, -0.5, -14, 10, '#ffd090'], [3.5, -0.5, -10, 9, '#ff5a1a'], [-3.5, -0.5, -10, 9, '#ff5a1a'], [0, 1.5, -18, 26, '#ff3a10']]) {
+    const g = glowSprite(c, s, 0); g.position.set(x, y, z); g.userData.base = s; flame.add(g); shipFX.flame.push(g);
+  }
+  shipFX.flameG = flame;
 
   // ---- sisemus ----
   const IM = {
@@ -1149,8 +1154,13 @@ async function buildSurface(p) {
     const c = makeCreature(sp); let x, z; for (let t = 0; t < 15; t++) { const a = r() * PI * 2, d = 25 + r() * 260; x = Math.cos(a) * d; z = Math.sin(a) * d; if (okSpot(x, z)) break; }
     c.home.set(x, 0, z); c.g.position.set(x, H(x, z), z); c.tx = x; c.tz = z; sc.add(c.g); creatures.push(c);
   }
+  // pilved, millest laev läbi lendab
+  const cts = [cloudTex(71), cloudTex(72), cloudTex(73)]; const cloudCol = p.kind === 'lava' ? '#5a3a30' : p.kind === 'toxic' ? '#e0f0b0' : '#ffffff';
+  for (let k = 0; k < 34; k++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: cts[k % 3], color: cloudCol, transparent: true, depthWrite: false, opacity: 0.9 })); const a = r() * PI * 2, d = 80 + r() * 700; s.position.set(Math.cos(a) * d, 170 + r() * 110, Math.sin(a) * d * 0.6 + 250); s.scale.setScalar(160 + r() * 220); sc.add(s); }
+  // tolm maandumiskohas
+  const dust = new THREE.Sprite(new THREE.SpriteMaterial({ map: cts[0], color: pal.ground[1], transparent: true, depthWrite: false, opacity: 0 })); dust.position.set(0, 2.5, 2); dust.scale.setScalar(55); sc.add(dust);
   const beam = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new V3(), new V3(0, 0, -1)]), new THREE.LineBasicMaterial({ color: 0x7dff9a, toneMapped: false, fog: false }));
-  return { scene: sc, H, water, deposits, depIM, monos, creatures, planet: p, beam };
+  return { scene: sc, H, water, deposits, depIM, monos, creatures, planet: p, beam, dust };
 }
 function surfaceGround(x, z) { let g = SURF.H(x, z); if (Math.abs(x) < 1.2 && z >= 10.9 && z <= 17.5) g = Math.max(g, LAND_H * (17.5 - z) / 6.6); return g; }
 function updateSurface(dt) {
@@ -1221,7 +1231,7 @@ function toggleSeat() {
   else { setMode('seat'); say('Istud roolis.'); }
 }
 function toggleOutside() {
-  if (R.landed || onFoot() || R.busy) return;
+  if (onFoot() || R.busy === 'hyper' || (R.landed && !R.busy)) return;
   if (R.mode === 'outside') setMode(R.prevMode || 'seat'); else { R.prevMode = R.mode; setMode('outside'); say('Välisvaade. Vajuta X, et tagasi minna.'); }
 }
 function exitShip() {
@@ -1246,31 +1256,105 @@ function enterShip() {
 }
 function exitEnter() { if (onFoot()) enterShip(); else exitShip(); }
 function landToggle() { if (R.landed) takeoff(); else startLanding(); }
+/* ---------- nähtav maandumine ja start ---------- */
+const LS = { t: 0, p: null, surf: null, entered: false, done: false, gear: false };
+const LP0 = new V3(0, 300, 650), LP1 = new V3(0, 140, 280), LP2 = new V3(0, 35, 0);
+const TP0 = new V3(0, 35, 0), TP1 = new V3(0, 140, -220), TP2 = new V3(0, 460, -950);
+const QI = new Q4();
+function setFade(v) { R.fade = R.fadeTarget = clamp(v, 0, 1); }
+function setFlame(v) {
+  shipFX.flameG.visible = v > 0.01;
+  for (const g of shipFX.flame) { g.material.opacity = v; g.scale.setScalar(g.userData.base * (0.7 + v * 0.5) * (0.85 + Math.random() * 0.3)); }
+}
+function bez(a, b, c, u, out) { const k = 1 - u; return out.set(k * k * a.x + 2 * k * u * b.x + u * u * c.x, k * k * a.y + 2 * k * u * b.y + u * u * c.y, k * k * a.z + 2 * k * u * b.z + u * u * c.z); }
+function shipAlong(a, b, c, u, levelOut) {
+  bez(a, b, c, u, ship.position);
+  const k = 1 - u; _v.set(2 * k * (b.x - a.x) + 2 * u * (c.x - b.x), 2 * k * (b.y - a.y) + 2 * u * (c.y - b.y), 2 * k * (b.z - a.z) + 2 * u * (c.z - b.z));
+  _m.lookAt(ship.position, _v2.copy(ship.position).add(_v), UP); _q.setFromRotationMatrix(_m);
+  ship.quaternion.slerpQuaternions(_q, QI, levelOut);
+}
 function startLanding() {
   const p = R.nearPlanet; if (!p || R.landed || R.busy || onFoot()) return;
   if (p.kind === 'gas') { say('Gaasihiiglasele ei saa maanduda!'); return; }
-  R.busy = 'land'; R.autopilot = false; R.throttle = 0; if (R.mode === 'outside') setMode('seat');
+  R.busy = 'land'; R.autopilot = false; R.throttle = 0;
+  Object.assign(LS, { t: 0, p, surf: null, entered: false, done: false, gear: false });
   R.spaceBack.copy(ship.position).sub(p.pos).normalize();
-  say(`Maandun planeedile ${p.name}…`);
-  fadeTo(1, async () => {
-    SURF = await buildSurface(p);
-    SURF.scene.add(ship); ship.position.set(0, LAND_H, 0); ship.quaternion.identity(); ship.updateMatrixWorld(true);
-    shipFX.gear.visible = true; shipFX.door.visible = false; activeScene = SURF.scene; R.landed = p; R.busy = null; R.speed = 0; R.vel.set(0, 0, 0); mus.t = 0.5;
-    if (!S.discovered.includes(discKey(p))) { S.discovered.push(discKey(p)); S.credits += 50; }
-    fadeTo(0); say(`Maandusid! Tõuse püsti ja mine tagauksest välja.`);
-  });
+  fader.material.color.set(p.atm);
+  buildSurface(p).then(s => { LS.surf = s; });
+  say(`Lähenen planeedile ${p.name}…`);
+}
+function landSpace(dt) {
+  const p = LS.p; LS.t += dt; const d = ship.position.distanceTo(p.pos);
+  _m.lookAt(ship.position, p.pos, _v3.set(0, 1, 0).applyQuaternion(ship.quaternion)); _q.setFromRotationMatrix(_m);
+  const ang = ship.quaternion.angleTo(_q); ship.quaternion.rotateTowards(_q, 1.3 * dt);
+  if (!LS.entered && d < p.r * 1.6) { LS.entered = true; say('Sisenen atmosfääri…'); haptic('left', 0.5, 300); haptic('right', 0.5, 300); }
+  setFlame(smooth(p.r * 1.9, p.r * 1.22, d));
+  if (!LS.done && (d < p.r * 1.16 || LS.t > 10)) LS.done = true;
+  if (LS.done) {
+    R.speed = approach(R.speed, 0, 1500 * dt); setFade(R.fade + dt * 1.6);
+    if (R.fade >= 1 && LS.surf) swapToSurface();
+  } else {
+    R.speed = approach(R.speed, ang > 0.5 ? 150 : clamp((d - p.r) * 0.9, 250, 3000), 900 * dt);
+    setFade(smooth(p.r * 1.5, p.r * 1.16, d) * 0.9);
+  }
+}
+function swapToSurface() {
+  SURF = LS.surf; SURF.scene.add(ship); ship.position.copy(LP0); ship.quaternion.identity(); ship.updateMatrixWorld(true);
+  activeScene = SURF.scene; R.busy = 'land2'; LS.t = 0; R.speed = 0; R.vel.set(0, 0, 0); R.bump.set(0, 0, 0);
+  shipFX.gear.visible = false; mus.t = 0.5;
+  if (!S.discovered.includes(discKey(LS.p))) { S.discovered.push(discKey(LS.p)); S.credits += 50; }
+  say('Läbime pilvi – maandumine algab!');
+}
+function finishLanding() {
+  R.landed = LS.p; R.busy = null; shipFX.ramp.visible = true; shipFX.door.visible = false; shipFX.gear.position.y = 0;
+  ship.position.set(0, LAND_H, 0); ship.quaternion.identity(); setFlame(0);
+  if (R.mode === 'outside') setMode('seat');
+  sfx.boom(); haptic('left', 0.6, 200); haptic('right', 0.6, 200);
+  say('Maandusid! Tõuse püsti ja mine tagauksest välja.'); save();
 }
 function takeoff() {
   if (!R.landed || R.busy) return;
   if (onFoot()) enterShip();
-  R.busy = 'takeoff'; const p = R.landed;
-  fadeTo(1, () => {
-    scene.add(ship); const dir = R.spaceBack; ship.position.copy(p.pos).addScaledVector(dir, p.r * 1.6 + 250);
-    _m.lookAt(ship.position, _v.copy(ship.position).add(dir), UP); ship.quaternion.setFromRotationMatrix(_m);
-    shipFX.gear.visible = false; shipFX.door.visible = true; activeScene = scene;
-    const old = SURF; SURF = null; old.scene.remove(old.beam); disposeTree(old.scene, false);
-    R.landed = null; R.busy = null; R.speed = 60; mus.t = 0.5; fadeTo(0); say(`Tagasi kosmoses. Head reisi, kapten!`);
-  });
+  R.busy = 'takeoff'; LS.t = 0; LS.p = R.landed;
+  shipFX.ramp.visible = false; shipFX.door.visible = true; fader.material.color.set(LS.p.atm);
+  say('Start! Hoia kinni…');
+}
+function swapToSpace() {
+  const p = LS.p; scene.add(ship); const dir = R.spaceBack; ship.position.copy(p.pos).addScaledVector(dir, p.r * 1.3);
+  _m.lookAt(ship.position, _v.copy(ship.position).add(dir), UP); ship.quaternion.setFromRotationMatrix(_m);
+  shipFX.gear.visible = false; activeScene = scene;
+  const old = SURF; SURF = null; old.scene.remove(old.beam); disposeTree(old.scene, false);
+  R.landed = null; R.busy = 'takeoff2'; LS.t = 0; R.speed = 500; mus.t = 0.5;
+}
+function updateLandSeq(dt) {
+  const st = R.busy;
+  if (st === 'land2') {
+    LS.t += dt; const t = LS.t; setFade(1 - smooth(0, 1.3, t));
+    if (t < 6.5) { const s = t / 6.5; shipAlong(LP0, LP1, LP2, 1 - Math.pow(1 - s, 2.2), smooth(4, 6.5, t)); setFlame(0.6 * (1 - smooth(0, 2.5, t))); SURF.dust.material.opacity = 0; }
+    else {
+      const s = clamp((t - 6.5) / 3.5, 0, 1); ship.quaternion.identity(); ship.position.set(0, lerp(LP2.y, LAND_H, smooth(0, 1, s)), 0);
+      if (!LS.gear) { LS.gear = true; shipFX.gear.visible = true; say('Maandumisjalad välja!'); }
+      shipFX.gear.position.y = 2.5 * (1 - smooth(0, 0.45, s));
+      SURF.dust.material.opacity = 0.75 * (1 - clamp((ship.position.y - LAND_H) / 22, 0, 1));
+      if (s >= 1) finishLanding();
+    }
+  } else if (st === 'takeoff') {
+    LS.t += dt; const t = LS.t;
+    if (t < 3) {
+      ship.quaternion.identity(); ship.position.set(0, lerp(LAND_H, TP0.y, smooth(0, 3, t)), 0);
+      shipFX.gear.position.y = 2.5 * smooth(1, 2.5, t); shipFX.gear.visible = t < 2.5;
+      SURF.dust.material.opacity = 0.75 * (1 - clamp((ship.position.y - LAND_H) / 22, 0, 1));
+    } else {
+      const s = clamp((t - 3) / 5, 0, 1); shipAlong(TP0, TP1, TP2, s * s, 1 - smooth(3, 4.5, t));
+      SURF.dust.material.opacity = Math.max(0, SURF.dust.material.opacity - dt * 0.5);
+      setFlame(smooth(6, 8, t) * 0.7); setFade(smooth(6.6, 8, t));
+      if (t >= 8.1) swapToSpace();
+    }
+  } else if (st === 'takeoff2') {
+    LS.t += dt; const t = LS.t; setFade(1 - smooth(0, 1.3, t)); setFlame(0.7 * (1 - smooth(0, 2, t))); R.speed = approach(R.speed, 300, 200 * dt);
+    if (t > 2) { R.busy = null; setFlame(0); say('Tagasi kosmoses. Head reisi, kapten!'); }
+  }
+  if (!R.busy && SURF && SURF.dust.material.opacity > 0) SURF.dust.material.opacity = Math.max(0, SURF.dust.material.opacity - dt * 0.35);
 }
 function startHyper(to) {
   if (R.busy || R.landed) return;
@@ -1398,10 +1482,10 @@ function updateControls(dt) {
   R.fireCd -= dt; if (flying() && fireNow && R.fireCd <= 0) { fire(); R.fireCd = 0.14; }
 }
 function updateFlight(dt) {
-  if (R.landed) { R.speed = 0; R.vel.set(0, 0, 0); return; }
+  if (R.landed || SURF) { R.speed = 0; R.vel.set(0, 0, 0); return; }
   const fuelOK = S.fuel > 0.01;
   if (R.busy === 'hyper') { R.vel.copy(fwdOf(ship, _v)).multiplyScalar(R.speed); ship.position.addScaledVector(R.vel, dt); if (R.hyperExit) R.speed = approach(R.speed, 0, 500 * dt); return; }
-  if (R.busy === 'land') { const p = R.nearPlanet; if (p) { _m.lookAt(ship.position, p.pos, _v3.set(0, 1, 0).applyQuaternion(ship.quaternion)); _q.setFromRotationMatrix(_m); ship.quaternion.rotateTowards(_q, 1.0 * dt); } R.speed = approach(R.speed, 350, 300 * dt); }
+  if (R.busy === 'land') landSpace(dt);
   else if (R.autopilot && flying() && (Math.abs(IN.rx) > 0.6 || Math.abs(IN.ry) > 0.6)) { R.autopilot = false; say('Käsijuhtimine – autopiloot välja.'); }
   if (R.busy) { }
   else if (R.autopilot) autopilot(dt, fuelOK);
@@ -1440,7 +1524,7 @@ function hitShip(dmg) {
   say(S.shield > 0 ? 'Ettevaatust! Kilp sai pihta.' : 'Kilp on tühi! Lenda ettevaatlikult.');
 }
 function shipCollisions() {
-  if (R.landed || R.busy === 'hyper') return;
+  if (R.landed || SURF || R.busy === 'hyper') return;
   const P = ship.position, SR = 12;
   if (P.distanceTo(FIELD_POS) < 1500) for (const a of AST) {
     if (!a.alive) continue; const m = a.r + SR; const d2 = P.distanceToSquared(a.pos); if (d2 > m * m) continue;
@@ -1529,7 +1613,7 @@ function updateTool(dt) {
   } else { beam.material.color.set('#7ff0ff'); R.scanObj = null; }
 }
 function checkProximity() {
-  if (R.landed || R.busy === 'hyper') { R.nearStation = false; R.nearPlanet = null; return; }
+  if (R.landed || SURF || R.busy === 'hyper' || R.busy === 'takeoff2') { R.nearStation = false; R.nearPlanet = null; return; }
   const P = ship.position;
   const near = P.distanceTo(STATION_POS) < 1100; if (near && !R.nearStation) say('Tere tulemast jaama!'); R.nearStation = near;
   const inF = P.distanceTo(FIELD_POS) < 1300; if (inF && !R.inField) say('Asteroidiväli! Tulista kive ja korja kristallid.'); R.inField = inF;
@@ -1539,7 +1623,7 @@ function checkProximity() {
   if (R.time - R.lastHit > 3 && S.shield < stat.maxShield) S.shield = Math.min(stat.maxShield, S.shield + 0.8);
 }
 function updateShipFX(dt) {
-  const f = clamp(Math.abs(R.speed) / stat.pulse, 0, 1), base = R.landed ? 0.2 : 0.35 + clamp(Math.abs(R.speed) / stat.manual, 0, 1) * 0.5 + f * 1.6;
+  const f = clamp(Math.abs(R.speed) / stat.pulse, 0, 1), base = (R.busy === 'land2' || R.busy === 'takeoff') ? 1.3 : R.landed ? 0.2 : 0.35 + clamp(Math.abs(R.speed) / stat.manual, 0, 1) * 0.5 + f * 1.6;
   for (const g of shipFX.glows) g.scale.setScalar(g.userData.base * base * (0.92 + Math.random() * 0.16));
   shipFX.stick.rotation.set(-IN.ry * 0.35, 0, -IN.rx * 0.35); shipFX.lever.rotation.x = -R.throttle * 0.6;
   shipFX.reticle.visible = flying();
@@ -1557,7 +1641,7 @@ function loop() {
 function step(dt) {
   R.time += dt;
   readXR(); readKeys(); updateControls(dt);
-  updateFlight(dt); shipCollisions(); updateHyper(dt); ship.updateMatrixWorld(true);
+  updateLandSeq(dt); updateFlight(dt); shipCollisions(); updateHyper(dt); ship.updateMatrixWorld(true);
   updateWalk(dt); updateGround(dt); updateEVA(dt);
   updateLasers(dt); updateAsteroids(dt); updateCrystals(dt); updateNPCs(dt); updateSurface(dt);
   station.ring.rotation.y += dt * 0.03; for (const b of station.beacons) b.visible = (R.time % 2) < 0.25;
