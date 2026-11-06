@@ -1,4 +1,4 @@
-[index (12).html](https://github.com/user-attachments/files/34497226/index.12.html)
+[index (13).html](https://github.com/user-attachments/files/34497889/index.13.html)
 <!DOCTYPE html>
 <html lang="et">
 <head>
@@ -46,14 +46,15 @@
     <a-box position="0 2.55 0" width="2.5" height="0.1" depth="2.5" color="#667"></a-box>
     <a-box position="0 2.47 0" width="0.7" height="0.04" depth="0.3" color="#ffe9a8" material="shader:flat"></a-box>
     <a-box id="door" position="0 1.25 -1.2" width="2.4" height="2.5" depth="0.05" color="#778"></a-box>
+    <a-text id="score" value="Võidud: 0   Kukkumised: 0" position="0 2.35 1.15" rotation="0 180 0" align="center" width="2.2" color="#aab"></a-text>
     <a-text id="win" value="Päästsid kassi!" visible="false" position="0 1.6 1.15" rotation="0 180 0" align="center" width="3" color="#ffd86b"></a-text>
     <a-box id="btn" class="clickable" position="-1.15 1.2 0" width="0.06" height="0.2" depth="0.2" color="#d22"></a-box>
     <a-text id="floor" value="Korrus 0" position="0 2.1 1.15" rotation="0 180 0" align="center" width="3" color="#fff"></a-text>
   </a-entity>
 
   <!-- Laud (150 m kõrgusel) -->
-  <a-box id="plank" position="0 -0.012 -2.3" width="0.22" height="0.025" depth="2.2" color="#b07a3c"></a-box>
-  <a-entity id="cat" position="0 0 -3.0">
+  <a-box id="plank" position="0 -0.012 -2.1" width="0.22" height="0.025" depth="1.8" color="#b07a3c"></a-box>
+  <a-entity id="cat" position="0 0 -2.7">
     <a-entity id="catbody" scale="1.1 1.1 1.1">
       <a-box position="0 0.11 0" width="0.2" height="0.16" depth="0.34" color="#e9892b"></a-box>
       <a-sphere position="0 0.24 0.17" radius="0.09" color="#f09a3e"></a-sphere>
@@ -67,7 +68,11 @@
     </a-entity>
     <a-text id="catsay" value="Aita mind!" position="0 0.85 0" align="center" width="3.2" color="#fff" look-at="#cam"></a-text>
   </a-entity>
-  <a-cylinder id="beacon" position="0 3 -3.0" radius="0.1" height="6"
+  <a-octahedron id="gem" position="0 0.35 -2.7" radius="0.12" visible="false"
+    material="color:#4df0ff;emissive:#2ab;emissiveIntensity:0.8;metalness:0.5"
+    animation="property:rotation;to:0 360 0;dur:3000;loop:true;easing:linear"
+    animation__bob="property:position;from:0 0.32 -2.7;to:0 0.44 -2.7;dur:900;dir:alternate;loop:true;easing:easeInOutSine"></a-octahedron>
+  <a-cylinder id="beacon" position="0 3 -2.7" radius="0.1" height="6"
               material="shader:flat;color:#ffd86b;opacity:0.2;transparent:true;side:double"></a-cylinder>
 
   <a-entity id="city"><a-plane rotation="-90 0 0" position="0 -0.05 0" width="3000" height="3000" color="#333"></a-plane></a-entity>
@@ -162,9 +167,44 @@ function meow(vol = .3) {
   g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(vol, now + .08); g.gain.linearRampToValueAtTime(0, now + .65);
   o.connect(f); f.connect(g); g.connect(master); o.start(now); o.stop(now + .7);
 }
-setInterval(() => { if (state === 'up' && !rescued) meow(.1 + .3 * Math.max(0, 1 - catDist / 4)); }, 3000);
+setInterval(() => { if (state === 'up' && !rescued) { if (ending === 'gem') chime(); else meow(.1 + .3 * Math.max(0, 1 - catDist / 4)); } }, 3000);
 
-function rescue() {   // LÕKS: kass meelitas sind kohale, lift kukub minema, väljapääsu pole
+let ending = 'trap', lastEnding = '', wins = 0, falls = 0, fadeIv;
+function score() { $('#score').setAttribute('value', 'Võidud: ' + wins + '   Kukkumised: ' + falls); }
+function fadeFlash() {
+  let o = 1; clearInterval(fadeIv);
+  fadeIv = setInterval(() => { o -= .03; $('#flash').setAttribute('material', 'opacity', Math.max(0, o)); if (o <= 0) clearInterval(fadeIv); }, 50);
+}
+function chime() {
+  if (!AC) return;
+  [1568, 2093].forEach((fr, i) => { const now = AC.currentTime + i * .12, o = AC.createOscillator(), g = AC.createGain(); o.frequency.value = fr;
+    g.gain.setValueAtTime(.12, now); g.gain.exponentialRampToValueAtTime(.001, now + .9); o.connect(g); g.connect(master); o.start(now); o.stop(now + 1); });
+}
+function pickEnding() {   // iga ring on laua otsas midagi muud
+  const c = ['trap', 'rescue', 'gem'].filter(x => x !== lastEnding); ending = lastEnding = c[Math.floor(Math.random() * c.length)];
+  $('#cat').setAttribute('visible', ending !== 'gem'); $('#gem').setAttribute('visible', ending === 'gem');
+  $('#beacon').setAttribute('material', 'color', ending === 'gem' ? '#4df0ff' : '#ffd86b'); $('#beacon').setAttribute('visible', true);
+}
+function saveCat() {   // LÕPP 2: kass on päriselt hädas, päästad ta
+  meow(.35); setTimeout(ding, 150);
+  $('#catsay').setAttribute('value', 'Aitäh!'); $('#beacon').setAttribute('visible', false);
+  $('#win').setAttribute('value', 'Päästsid kassi!');
+  $('#catbody').setAttribute('animation__hop', { property: 'position', from: '0 0 0', to: '0 0.07 0', dur: 220, dir: 'alternate', loop: true, easing: 'easeInOutSine' });
+  $('#cat').setAttribute('animation__walk', { property: 'position', to: '0 0 -1.0', dur: 2500, easing: 'linear' });
+}
+function grabGem() {   // LÕPP 3: aare, aga varesed ründavad ja laud praksub
+  ding(); thump(70, .8, .6); catHome = true;
+  $('#gem').setAttribute('visible', false); $('#beacon').setAttribute('visible', false);
+  $('#win').setAttribute('value', 'Aare on sinu! Jookse liftini!'); $('#win').setAttribute('visible', true);
+  const L = $('a-scene').components.life;
+  for (let i = 0; i < 4; i++) setTimeout(() => { if (state === 'up') L.swoopNow(); }, 500 + i * 1100);
+  setTimeout(crack, 400); setTimeout(crack, 1800); setTimeout(() => L.heliNow(), 1000);
+}
+function rescue() {   // kutsutakse, kui jõuad laua otsa
+  rescued = true;
+  if (ending === 'trap') trapCat(); else if (ending === 'rescue') saveCat(); else grabGem();
+}
+function trapCat() {   // LÕKS: kass meelitas sind kohale, lift kukub minema, väljapääsu pole
   rescued = true; meow(.35); thump(55, .9, .9);
   $('#catsay').setAttribute('value', 'Siit pole väljapääsu...');
   $('#beacon').setAttribute('material', 'color', '#ff2222');
@@ -189,12 +229,12 @@ $('#cat').addEventListener('animationcomplete__walk2', () => {
   meow(.2); $('#win').setAttribute('visible', true);
 });
 function resetCat() {
-  const cat = $('#cat'); ['animation__walk', 'animation__walk2'].forEach(a => cat.removeAttribute(a)); setPos(cat, 0, 0, -3.0);
+  const cat = $('#cat'); ['animation__walk', 'animation__walk2'].forEach(a => cat.removeAttribute(a)); setPos(cat, 0, 0, -2.7);
   $('#catbody').removeAttribute('animation__hop'); setPos($('#catbody'), 0, 0, 0);
   rescued = false; catHome = false; liftGone = false; $('#catsay').setAttribute('value', 'Aita mind!');
-  ['#eyeL', '#eyeR'].forEach(id => $(id).setAttribute('color', '#111')); $('#beacon').setAttribute('material', 'color', '#ffd86b');
+  ['#eyeL', '#eyeR'].forEach(id => $(id).setAttribute('color', '#111')); 
   const lift = $('#lift'); lift.removeAttribute('animation__drop'); setPos(lift, 0, 0, 0);
-  $('#beacon').setAttribute('visible', true); $('#win').setAttribute('visible', false);
+  $('#win').setAttribute('visible', false); pickEnding();
 }
 function descend() {   // kass on liftis ja sina ka -> sõidame alla
   state = 'descending'; hum = startHum(); shakeAmp = .01;
@@ -204,7 +244,7 @@ function descend() {   // kass on liftis ja sina ka -> sõidame alla
   $('#city').setAttribute('animation__down', { property: 'position', to: '0 0 0', dur: 9000, easing: 'easeInOutSine' });
 }
 $('#city').addEventListener('animationcomplete__down', () => {
-  hum.stop(); clearInterval(creakIv); shakeAmp = 0; $('#lift').object3D.position.set(0, 0, 0); ding();
+  hum.stop(); clearInterval(creakIv); shakeAmp = 0; $('#lift').object3D.position.set(0, 0, 0); ding(); wins++; score();
   const city = $('#city'); ['animation__up1', 'animation__up2', 'animation__down'].forEach(a => city.removeAttribute(a)); setPos(city, 0, 0, 0);
   $('#door').setAttribute('animation__open', { property: 'position', to: '0 4 -1.2', dur: 1500 });
   $('#btn').setAttribute('color', '#d22'); $('#floor').setAttribute('value', 'Korrus 0');
@@ -365,7 +405,7 @@ window.addEventListener('keydown', e => { if (e.code === 'Space') ascend(); });
 setInterval(() => {  // värin, tulede vilkumine, korruse number
   const lift = $('#lift').object3D, amb = $('#amb');
   if (shakeAmp > 0 && state !== 'falling') lift.position.set((Math.random() - .5) * shakeAmp * 2, (Math.random() - .5) * shakeAmp, (Math.random() - .5) * shakeAmp * 2);
-  amb.setAttribute('light', 'intensity', (flicker || (state === 'ascending' && Math.random() < .04)) ? (Math.random() < .5 ? .08 : .8) : (rescued ? .4 : .8));
+  amb.setAttribute('light', 'intensity', (flicker || (state === 'ascending' && Math.random() < .04)) ? (Math.random() < .5 ? .08 : .8) : (rescued && ending === 'trap' ? .4 : .8));
   if (state === 'ascending' || state === 'descending') $('#floor').setAttribute('value', 'Korrus ' + Math.max(0, Math.round(-$('#city').object3D.position.y / 3)));
 }, 80);
 
@@ -398,7 +438,7 @@ $('#rig').addEventListener('animationcomplete__fall', () => {
   stopNode(rumble, .05); stopNode(ambWind, .1); ambWind = null;
   $('#shaker').object3D.position.set(0, 0, 0); $('#cam').setAttribute('camera', 'fov', 80);
   impact(); $('#vign').setAttribute('material', 'opacity', 0);
-  $('#flash').setAttribute('material', 'opacity', 1);   // kõik läheb valgeks
+  clearInterval(fadeIv); falls++; score(); $('#flash').setAttribute('material', 'opacity', 1);   // kõik läheb valgeks
   setTimeout(restart, 2200);
 });
 
@@ -409,7 +449,7 @@ function restart() {   // nagu mängus: uuesti algusest
   door.removeAttribute('animation__open'); setPos(door, 0, 1.25, -1.2); resetCat();
   $('#btn').setAttribute('color', '#d22'); $('#floor').setAttribute('value', 'Korrus 0');
   state = 'idle';
-  $('#flash').setAttribute('animation__fade', { property: 'material.opacity', from: 1, to: 0, dur: 1800, easing: 'linear' });
+  fadeFlash();
 }
 
 /* ---------- KONTROLL: kas oled liftis või laual ---------- */
@@ -423,16 +463,18 @@ $('a-scene').addEventListener('loaded', () => {
     if (state === 'idle' || state === 'ascending' || state === 'descending') { fear = 0; if (Math.abs(v.x) > 1.0 || Math.abs(v.z) > 1.0) recenter(); return; }
     if (state !== 'up') { fear = state === 'falling' ? 1 : 0; return; }
     const inLift = !liftGone && Math.abs(v.x) < 1.2 && v.z > -1.2 && v.z < 1.2;
-    const onPlank = Math.abs(v.x) < 0.18 && v.z <= -1.2 && v.z > -3.5;
+    const onPlank = Math.abs(v.x) < 0.18 && v.z <= -1.2 && v.z > -3.1;
     if (!inLift && !onPlank) { fall(); return; }
-    fear = rescued ? 1 : onPlank ? .25 + .75 * Math.min(1, Math.max(0, (-v.z - 1.2) / 2.2)) : 0;
-    catDist = Math.hypot(v.x, v.z + 3.0);
+    fear = (rescued && ending === 'trap') ? 1 : onPlank ? .25 + .75 * Math.min(1, Math.max(0, (-v.z - 1.2) / 1.8)) : 0;
+    catDist = Math.hypot(v.x, v.z + 2.7);
     if (!rescued && catDist < 0.7) rescue();
+    if (rescued && catHome && inLift) { descend(); return; }
     if (ambWind) ambWind.g.gain.setTargetAtTime(.05 + .15 * fear, AC.currentTime, .3);
     if (onPlank && Math.random() < .03) creak();
     if (onPlank && fear > .5 && Math.random() < .012) crack();
   }, 100);
 });
+pickEnding(); score();
 </script>
 </body>
 </html>
