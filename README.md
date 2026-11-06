@@ -1,4 +1,4 @@
-[Uploading index (10).html…]()
+[index (11).html](https://github.com/user-attachments/files/34496921/index.11.html)
 <!DOCTYPE html>
 <html lang="et">
 <head>
@@ -12,7 +12,7 @@
 </style>
 </head>
 <body>
-<div id="hud">Klõpsa punast nuppu liftis (või Space), et üles sõita. WASD + hiir = töölaud. VR-is vajuta alt paremalt VR-nuppu.</div>
+<div id="hud">Klõpsa punast nuppu liftis (või Space). Üleval kutsub kass laua otsas sind... WASD + hiir = töölaud. VR-is vajuta alt paremalt VR-nuppu.</div>
 
 <canvas id="vig" width="256" height="256" style="display:none"></canvas>
 <a-scene renderer="antialias:true" fog="type:linear;color:#bcd4e6;near:100;far:1000" background="color:#bcd4e6">
@@ -43,12 +43,29 @@
     <a-box position="0 2.55 0" width="2.5" height="0.1" depth="2.5" color="#667"></a-box>
     <a-box position="0 2.47 0" width="0.7" height="0.04" depth="0.3" color="#ffe9a8" material="shader:flat"></a-box>
     <a-box id="door" position="0 1.25 -1.2" width="2.4" height="2.5" depth="0.05" color="#778"></a-box>
+    <a-text id="win" value="Päästsid kassi!" visible="false" position="0 1.6 1.15" rotation="0 180 0" align="center" width="3" color="#ffd86b"></a-text>
     <a-box id="btn" class="clickable" position="-1.15 1.2 0" width="0.06" height="0.2" depth="0.2" color="#d22"></a-box>
     <a-text id="floor" value="Korrus 0" position="0 2.1 1.15" rotation="0 180 0" align="center" width="3" color="#fff"></a-text>
   </a-entity>
 
   <!-- Laud (150 m kõrgusel) -->
-  <a-box position="0 -0.025 -3.2" width="0.5" height="0.05" depth="4" color="#b07a3c"></a-box>
+  <a-box position="0 -0.015 -3.45" width="0.3" height="0.03" depth="4.5" color="#b07a3c"></a-box>
+  <a-entity id="cat" position="0 0 -5.3">
+    <a-entity id="catbody" scale="1.4 1.4 1.4">
+      <a-box position="0 0.11 0" width="0.2" height="0.16" depth="0.34" color="#e9892b"></a-box>
+      <a-sphere position="0 0.24 0.17" radius="0.09" color="#f09a3e"></a-sphere>
+      <a-cone position="-0.055 0.33 0.17" radius-bottom="0.035" radius-top="0" height="0.07" color="#f09a3e"></a-cone>
+      <a-cone position="0.055 0.33 0.17" radius-bottom="0.035" radius-top="0" height="0.07" color="#f09a3e"></a-cone>
+      <a-sphere id="eyeL" position="-0.035 0.255 0.25" radius="0.014" color="#111"></a-sphere>
+      <a-sphere id="eyeR" position="0.035 0.255 0.25" radius="0.014" color="#111"></a-sphere>
+      <a-sphere position="0 0.23 0.262" radius="0.012" color="#f4a"></a-sphere>
+      <a-cylinder position="0 0.2 -0.22" radius="0.016" height="0.3" rotation="35 0 0" color="#e9892b"
+                  animation="property:rotation;from:35 -25 0;to:35 25 0;dur:700;dir:alternate;loop:true;easing:easeInOutSine"></a-cylinder>
+    </a-entity>
+    <a-text id="catsay" value="Aita mind!" position="0 0.85 0" align="center" width="3.2" color="#fff" look-at="#cam"></a-text>
+  </a-entity>
+  <a-cylinder id="beacon" position="0 3 -5.3" radius="0.12" height="6"
+              material="shader:flat;color:#ffd86b;opacity:0.2;transparent:true;side:double"></a-cylinder>
 
   <a-entity id="city"><a-plane rotation="-90 0 0" position="0 -0.05 0" width="3000" height="3000" color="#333"></a-plane></a-entity>
 </a-scene>
@@ -57,7 +74,8 @@
 const $ = s => document.querySelector(s);
 const FALL_H = 400;
 let state = 'idle'; // idle -> ascending -> up -> falling -> landed
-let shakeAmp = 0, flicker = false, hum, creakIv, ambWind, rumble, fear = 0;
+let shakeAmp = 0, flicker = false, hum, creakIv, ambWind, rumble, fear = 0, rescued = false, catHome = false, catDist = 99, liftGone = false;
+const setPos = (el, x, y, z) => el.setAttribute('position', { x, y, z });
 
 /* ---------- HELI (WebAudio, failid pole vaja) ---------- */
 let AC, master, noiseBuf;
@@ -131,6 +149,64 @@ function impact() {
 }
 
 
+
+/* ---------- KASS: põhjus laua peale minna ---------- */
+function meow(vol = .3) {
+  if (!AC) return; const now = AC.currentTime, o = AC.createOscillator(), g = AC.createGain(), f = AC.createBiquadFilter();
+  o.type = 'sawtooth'; o.frequency.setValueAtTime(520, now); o.frequency.linearRampToValueAtTime(880, now + .18); o.frequency.linearRampToValueAtTime(480, now + .6);
+  f.type = 'bandpass'; f.Q.value = 3; f.frequency.setValueAtTime(900, now); f.frequency.linearRampToValueAtTime(1800, now + .2); f.frequency.linearRampToValueAtTime(900, now + .6);
+  g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(vol, now + .08); g.gain.linearRampToValueAtTime(0, now + .65);
+  o.connect(f); f.connect(g); g.connect(master); o.start(now); o.stop(now + .7);
+}
+setInterval(() => { if (state === 'up' && !rescued) meow(.1 + .3 * Math.max(0, 1 - catDist / 6)); }, 3000);
+
+function rescue() {   // LÕKS: kass meelitas sind kohale, lift kukub minema, väljapääsu pole
+  rescued = true; meow(.35); thump(55, .9, .9);
+  $('#catsay').setAttribute('value', 'Siit pole väljapääsu...');
+  $('#beacon').setAttribute('material', 'color', '#ff2222');
+  ['#eyeL', '#eyeR'].forEach(id => $(id).setAttribute('color', '#ff2200'));
+  flicker = true; setTimeout(() => { flicker = false; }, 2500);
+  setTimeout(() => { thump(80, 1, .5); clank(); $('#door').setAttribute('animation__open', { property: 'position', to: '0 1.25 -1.2', dur: 150 }); }, 1200);
+  setTimeout(() => {
+    liftGone = true; const lift = $('#lift'); setPos(lift, 0, 0, 0);
+    lift.setAttribute('animation__drop', { property: 'position', to: '0 -400 0', dur: 3500, easing: 'easeInQuad' });
+    for (let i = 0; i < 6; i++) setTimeout(creak, i * 250);
+    clank();
+  }, 2000);
+  setTimeout(() => { thump(60, 1, .9); setTimeout(() => thump(45, .8, 1.1), 250); }, 5800);
+}
+$('#cat').addEventListener('animationcomplete__walk', () => {
+  if (!rescued) return;
+  $('#cat').setAttribute('animation__walk2', { property: 'position', to: '0.7 0 0.5', dur: 900, easing: 'easeInOutSine' });
+});
+$('#cat').addEventListener('animationcomplete__walk2', () => {
+  if (!rescued) return;
+  catHome = true; $('#catbody').removeAttribute('animation__hop'); setPos($('#catbody'), 0, 0, 0);
+  meow(.2); $('#win').setAttribute('visible', true);
+});
+function resetCat() {
+  const cat = $('#cat'); ['animation__walk', 'animation__walk2'].forEach(a => cat.removeAttribute(a)); setPos(cat, 0, 0, -5.3);
+  $('#catbody').removeAttribute('animation__hop'); setPos($('#catbody'), 0, 0, 0);
+  rescued = false; catHome = false; liftGone = false; $('#catsay').setAttribute('value', 'Aita mind!');
+  ['#eyeL', '#eyeR'].forEach(id => $(id).setAttribute('color', '#111')); $('#beacon').setAttribute('material', 'color', '#ffd86b');
+  const lift = $('#lift'); lift.removeAttribute('animation__drop'); setPos(lift, 0, 0, 0);
+  $('#beacon').setAttribute('visible', true); $('#win').setAttribute('visible', false);
+}
+function descend() {   // kass on liftis ja sina ka -> sõidame alla
+  state = 'descending'; hum = startHum(); shakeAmp = .01;
+  creakIv = setInterval(() => { if (Math.random() < .5) creak(); }, 900);
+  $('#door').setAttribute('animation__open', { property: 'position', to: '0 1.25 -1.2', dur: 900 });
+  if (ambWind) { stopNode(ambWind, .5); ambWind = null; }
+  $('#city').setAttribute('animation__down', { property: 'position', to: '0 0 0', dur: 9000, easing: 'easeInOutSine' });
+}
+$('#city').addEventListener('animationcomplete__down', () => {
+  hum.stop(); clearInterval(creakIv); shakeAmp = 0; $('#lift').object3D.position.set(0, 0, 0); ding();
+  const city = $('#city'); ['animation__up1', 'animation__up2', 'animation__down'].forEach(a => city.removeAttribute(a)); setPos(city, 0, 0, 0);
+  $('#door').setAttribute('animation__open', { property: 'position', to: '0 4 -1.2', dur: 1500 });
+  $('#btn').setAttribute('color', '#d22'); $('#floor').setAttribute('value', 'Korrus 0');
+  resetCat(); state = 'idle';
+});
+
 /* ---------- HIRM: südamelöögid + äärte tumenemine ---------- */
 (function () {
   const c = $('#vig').getContext('2d'), g = c.createRadialGradient(128, 128, 15, 128, 128, 80);
@@ -178,7 +254,7 @@ AFRAME.registerComponent('stick-move', {
 /* ---------- LIFT (vilgub, väriseb, jõnksatab) ---------- */
 function ascend() {
   if (state !== 'idle') return;
-  audio(); state = 'ascending'; $('#btn').setAttribute('color', '#2a2');
+  audio(); state = 'ascending'; $('#door').setAttribute('animation__open', { property: 'position', to: '0 1.25 -1.2', dur: 600 }); $('#btn').setAttribute('color', '#2a2');
   hum = startHum(); shakeAmp = 0.012;
   creakIv = setInterval(() => { if (Math.random() < .7) creak(); }, 650);
   $('#city').setAttribute('animation__up1', { property: 'position', to: '0 -150 0', dur: 6000, easing: 'easeInQuad' });
@@ -205,14 +281,15 @@ window.addEventListener('keydown', e => { if (e.code === 'Space') ascend(); });
 setInterval(() => {  // värin, tulede vilkumine, korruse number
   const lift = $('#lift').object3D, amb = $('#amb');
   if (shakeAmp > 0 && state !== 'falling') lift.position.set((Math.random() - .5) * shakeAmp * 2, (Math.random() - .5) * shakeAmp, (Math.random() - .5) * shakeAmp * 2);
-  amb.setAttribute('light', 'intensity', (flicker || (state === 'ascending' && Math.random() < .04)) ? (Math.random() < .5 ? .08 : .8) : .8);
-  if (state === 'ascending') $('#floor').setAttribute('value', 'Korrus ' + Math.max(0, Math.round(-$('#city').object3D.position.y / 3)));
+  amb.setAttribute('light', 'intensity', (flicker || (state === 'ascending' && Math.random() < .04)) ? (Math.random() < .5 ? .08 : .8) : (rescued ? .4 : .8));
+  if (state === 'ascending' || state === 'descending') $('#floor').setAttribute('value', 'Korrus ' + Math.max(0, Math.round(-$('#city').object3D.position.y / 3)));
 }, 80);
 
 /* ---------- KUKKUMINE ---------- */
 function fall() {
   state = 'falling';
   const rig = $('#rig'), p = rig.object3D.position;
+  setPos(rig, p.x, p.y, p.z);
   rig.setAttribute('animation__fall', { property: 'position', to: `${p.x} -${FALL_H} ${p.z}`, dur: 8500, easing: 'easeInQuad' });
   const t = AC.currentTime;
   if (ambWind) {
@@ -243,9 +320,9 @@ $('#rig').addEventListener('animationcomplete__fall', () => {
 
 function restart() {   // nagu mängus: uuesti algusest
   const rig = $('#rig'), city = $('#city'), door = $('#door');
-  rig.removeAttribute('animation__fall'); rig.object3D.position.set(0, 0, 0);
-  ['animation__up1', 'animation__up2'].forEach(a => city.removeAttribute(a)); city.object3D.position.set(0, 0, 0);
-  door.removeAttribute('animation__open'); door.object3D.position.set(0, 1.25, -1.2);
+  rig.removeAttribute('animation__fall'); setPos(rig, 0, 0, 0);
+  ['animation__up1', 'animation__up2'].forEach(a => city.removeAttribute(a)); setPos(city, 0, 0, 0);
+  door.removeAttribute('animation__open'); setPos(door, 0, 1.25, -1.2); resetCat();
   $('#btn').setAttribute('color', '#d22'); $('#floor').setAttribute('value', 'Korrus 0');
   state = 'idle';
   $('#flash').setAttribute('animation__fade', { property: 'material.opacity', from: 1, to: 0, dur: 1800, easing: 'linear' });
@@ -259,12 +336,14 @@ $('a-scene').addEventListener('loaded', () => {
   setInterval(() => {
     cam.getWorldPosition(v);
     const rig = $('#rig').object3D.position;
-    if (state === 'idle' || state === 'ascending') { fear = 0; if (Math.abs(v.x) > 1.0 || Math.abs(v.z) > 1.0) rig.set(0, 0, 0); return; }
+    if (state === 'idle' || state === 'ascending' || state === 'descending') { fear = 0; if (Math.abs(v.x) > 1.0 || Math.abs(v.z) > 1.0) setPos($('#rig'), 0, 0, 0); return; }
     if (state !== 'up') { fear = state === 'falling' ? 1 : 0; return; }
-    const inLift = Math.abs(v.x) < 1.2 && v.z > -1.2 && v.z < 1.2;
-    const onPlank = Math.abs(v.x) < 0.4 && v.z <= -1.2 && v.z > -5.3;
+    const inLift = !liftGone && Math.abs(v.x) < 1.2 && v.z > -1.2 && v.z < 1.2;
+    const onPlank = Math.abs(v.x) < 0.25 && v.z <= -1.2 && v.z > -5.8;
     if (!inLift && !onPlank) { fall(); return; }
-    fear = onPlank ? .25 + .75 * Math.min(1, Math.max(0, (-v.z - 1.2) / 3.8)) : 0;
+    fear = rescued ? 1 : onPlank ? .25 + .75 * Math.min(1, Math.max(0, (-v.z - 1.2) / 4.3)) : 0;
+    catDist = Math.hypot(v.x, v.z + 5.3);
+    if (!rescued && catDist < 0.8) rescue();
     if (ambWind) ambWind.g.gain.setTargetAtTime(.05 + .15 * fear, AC.currentTime, .3);
     if (onPlank && Math.random() < .03) creak();
   }, 100);
