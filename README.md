@@ -1,4 +1,4 @@
-[index (11).html](https://github.com/user-attachments/files/34496921/index.11.html)
+[index (12).html](https://github.com/user-attachments/files/34497226/index.12.html)
 <!DOCTYPE html>
 <html lang="et">
 <head>
@@ -14,8 +14,11 @@
 <body>
 <div id="hud">Klõpsa punast nuppu liftis (või Space). Üleval kutsub kass laua otsas sind... WASD + hiir = töölaud. VR-is vajuta alt paremalt VR-nuppu.</div>
 
+<canvas id="skyTex" width="16" height="256" style="display:none"></canvas>
+<canvas id="winTex" width="128" height="128" style="display:none"></canvas>
 <canvas id="vig" width="256" height="256" style="display:none"></canvas>
-<a-scene renderer="antialias:true" fog="type:linear;color:#bcd4e6;near:100;far:1000" background="color:#bcd4e6">
+<a-scene life renderer="antialias:true" fog="type:linear;color:#c99a8e;near:100;far:1000" background="color:#c99a8e">
+  <a-sky src="#skyTex" radius="2500"></a-sky>
   <a-entity cursor="rayOrigin:mouse" raycaster="objects:.clickable"></a-entity>
 
   <a-entity id="shaker">
@@ -31,7 +34,7 @@
     </a-entity>
   </a-entity>
 
-  <a-light id="amb" type="ambient" color="#fff" intensity="0.8"></a-light>
+  <a-light id="amb" type="ambient" color="#ffe2cc" intensity="0.8"></a-light>
   <a-light type="directional" position="-3 8 4" intensity="0.6"></a-light>
 
   <!-- Lift (väriseb sõidu ajal) -->
@@ -49,9 +52,9 @@
   </a-entity>
 
   <!-- Laud (150 m kõrgusel) -->
-  <a-box position="0 -0.015 -3.45" width="0.3" height="0.03" depth="4.5" color="#b07a3c"></a-box>
-  <a-entity id="cat" position="0 0 -5.3">
-    <a-entity id="catbody" scale="1.4 1.4 1.4">
+  <a-box id="plank" position="0 -0.012 -2.3" width="0.22" height="0.025" depth="2.2" color="#b07a3c"></a-box>
+  <a-entity id="cat" position="0 0 -3.0">
+    <a-entity id="catbody" scale="1.1 1.1 1.1">
       <a-box position="0 0.11 0" width="0.2" height="0.16" depth="0.34" color="#e9892b"></a-box>
       <a-sphere position="0 0.24 0.17" radius="0.09" color="#f09a3e"></a-sphere>
       <a-cone position="-0.055 0.33 0.17" radius-bottom="0.035" radius-top="0" height="0.07" color="#f09a3e"></a-cone>
@@ -64,7 +67,7 @@
     </a-entity>
     <a-text id="catsay" value="Aita mind!" position="0 0.85 0" align="center" width="3.2" color="#fff" look-at="#cam"></a-text>
   </a-entity>
-  <a-cylinder id="beacon" position="0 3 -5.3" radius="0.12" height="6"
+  <a-cylinder id="beacon" position="0 3 -3.0" radius="0.1" height="6"
               material="shader:flat;color:#ffd86b;opacity:0.2;transparent:true;side:double"></a-cylinder>
 
   <a-entity id="city"><a-plane rotation="-90 0 0" position="0 -0.05 0" width="3000" height="3000" color="#333"></a-plane></a-entity>
@@ -75,7 +78,8 @@ const $ = s => document.querySelector(s);
 const FALL_H = 400;
 let state = 'idle'; // idle -> ascending -> up -> falling -> landed
 let shakeAmp = 0, flicker = false, hum, creakIv, ambWind, rumble, fear = 0, rescued = false, catHome = false, catDist = 99, liftGone = false;
-const setPos = (el, x, y, z) => el.setAttribute('position', { x, y, z });
+const setPos = (el, x, y, z) => { el.object3D.position.set(x, y, z); el.setAttribute('position', { x, y, z }); };
+function recenter() { const c = $('#cam').object3D.position; setPos($('#rig'), -c.x, 0, -c.z); }
 
 /* ---------- HELI (WebAudio, failid pole vaja) ---------- */
 let AC, master, noiseBuf;
@@ -89,7 +93,7 @@ function audio() {
   if (AC.state === 'suspended') AC.resume();
 }
 ['pointerdown', 'keydown', 'click'].forEach(e => window.addEventListener(e, audio));
-$('a-scene').addEventListener('enter-vr', audio);
+$('a-scene').addEventListener('enter-vr', () => { audio(); setTimeout(recenter, 700); });
 
 function noise(type, freq, q, vol) {
   const s = AC.createBufferSource(); s.buffer = noiseBuf; s.loop = true;
@@ -158,7 +162,7 @@ function meow(vol = .3) {
   g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(vol, now + .08); g.gain.linearRampToValueAtTime(0, now + .65);
   o.connect(f); f.connect(g); g.connect(master); o.start(now); o.stop(now + .7);
 }
-setInterval(() => { if (state === 'up' && !rescued) meow(.1 + .3 * Math.max(0, 1 - catDist / 6)); }, 3000);
+setInterval(() => { if (state === 'up' && !rescued) meow(.1 + .3 * Math.max(0, 1 - catDist / 4)); }, 3000);
 
 function rescue() {   // LÕKS: kass meelitas sind kohale, lift kukub minema, väljapääsu pole
   rescued = true; meow(.35); thump(55, .9, .9);
@@ -185,7 +189,7 @@ $('#cat').addEventListener('animationcomplete__walk2', () => {
   meow(.2); $('#win').setAttribute('visible', true);
 });
 function resetCat() {
-  const cat = $('#cat'); ['animation__walk', 'animation__walk2'].forEach(a => cat.removeAttribute(a)); setPos(cat, 0, 0, -5.3);
+  const cat = $('#cat'); ['animation__walk', 'animation__walk2'].forEach(a => cat.removeAttribute(a)); setPos(cat, 0, 0, -3.0);
   $('#catbody').removeAttribute('animation__hop'); setPos($('#catbody'), 0, 0, 0);
   rescued = false; catHome = false; liftGone = false; $('#catsay').setAttribute('value', 'Aita mind!');
   ['#eyeL', '#eyeR'].forEach(id => $(id).setAttribute('color', '#111')); $('#beacon').setAttribute('material', 'color', '#ffd86b');
@@ -206,6 +210,79 @@ $('#city').addEventListener('animationcomplete__down', () => {
   $('#btn').setAttribute('color', '#d22'); $('#floor').setAttribute('value', 'Korrus 0');
   resetCat(); state = 'idle';
 });
+
+
+/* ---------- ÜLEVAL: pilved, varesed, helikopter, laua kõikumine ---------- */
+function caw() {
+  if (!AC) return;
+  for (let i = 0; i < 3; i++) {
+    const now = AC.currentTime + i * .22, o = AC.createOscillator(), g = AC.createGain(), f = AC.createBiquadFilter();
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(720, now); o.frequency.exponentialRampToValueAtTime(380, now + .16);
+    f.type = 'bandpass'; f.frequency.value = 1100; f.Q.value = 2;
+    g.gain.setValueAtTime(.0001, now); g.gain.exponentialRampToValueAtTime(.25, now + .02); g.gain.exponentialRampToValueAtTime(.0001, now + .18);
+    o.connect(f); f.connect(g); g.connect(master); o.start(now); o.stop(now + .2);
+  }
+}
+function crack() { thump(180, .6, .12); creak(); const pl = $('#plank').object3D; pl.position.y -= .03; setTimeout(() => { pl.position.y += .03; }, 130); }
+function heliSound(dur) {
+  if (!AC) return; const now = AC.currentTime, s = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain();
+  s.buffer = noiseBuf; s.loop = true; f.type = 'lowpass'; f.frequency.value = 260; g.gain.value = .5;
+  const lfo = AC.createOscillator(), lg = AC.createGain(); lfo.frequency.value = 13; lg.gain.value = .5; lfo.connect(lg); lg.connect(g.gain);
+  const env = AC.createGain(); env.gain.setValueAtTime(0, now); env.gain.linearRampToValueAtTime(.9, now + dur / 2); env.gain.linearRampToValueAtTime(0, now + dur);
+  const pan = AC.createStereoPanner(); pan.pan.setValueAtTime(-1, now); pan.pan.linearRampToValueAtTime(1, now + dur);
+  s.connect(f); f.connect(g); g.connect(env); env.connect(pan); pan.connect(master);
+  s.start(now); lfo.start(now); s.stop(now + dur + .2); lfo.stop(now + dur + .2);
+}
+AFRAME.registerComponent('life', {
+  init() {
+    const T = AFRAME.THREE, sc = this.el.object3D; this.v = new T.Vector3();
+    let sd = 11; const r = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+    const mk = (c, o) => new T.MeshBasicMaterial({ color: c, transparent: o < 1, opacity: o, depthWrite: o >= 1 });
+    this.clouds = new T.Group(); sc.add(this.clouds);
+    const cg = new T.SphereGeometry(1, 10, 6), cm = mk(0xffffff, .7);
+    for (let i = 0; i < 22; i++) {
+      const g = new T.Group(), ang = r() * 6.28, rad = 40 + r() * 280, y = i < 5 ? 6 + r() * 28 : -(50 + r() * 320);
+      for (let k = 0; k < 4; k++) { const m = new T.Mesh(cg, cm); m.scale.set(22 + r() * 25, 7 + r() * 6, 16 + r() * 18); m.position.set((k - 1.5) * 20, r() * 4, r() * 14); g.add(m); }
+      g.position.set(Math.cos(ang) * rad, y, Math.sin(ang) * rad); this.clouds.add(g);
+    }
+    const bm = mk(0x111111, 1), wg = new T.BoxGeometry(.5, .012, .14), bg = new T.BoxGeometry(.1, .07, .24);
+    const bird = () => { const g = new T.Group(), lw = new T.Mesh(wg, bm), rw = new T.Mesh(wg, bm); g.add(new T.Mesh(bg, bm)); lw.position.x = -.27; rw.position.x = .27; g.add(lw, rw); g.userData = { lw, rw }; return g; };
+    this.birds = [];
+    for (let i = 0; i < 4; i++) { const b = bird(); Object.assign(b.userData, { a: r() * 6.28, rad: 9 + r() * 10, h: 1 + r() * 7, sp: .0004 + r() * .0003 }); sc.add(b); this.birds.push(b); }
+    this.sw = bird(); this.sw.visible = false; sc.add(this.sw); this.swT = -1;
+    const hm = mk(0x30343a, 1), h = new T.Group(), tail = new T.Mesh(new T.BoxGeometry(3, .25, .25), hm);
+    h.add(new T.Mesh(new T.BoxGeometry(3, 1.2, 1.2), hm)); tail.position.x = -2.8; h.add(tail);
+    this.rotor = new T.Mesh(new T.BoxGeometry(8, .05, .2), hm); this.rotor.position.y = .8; h.add(this.rotor); h.visible = false; sc.add(h); this.heli = h; this.heliT = -1;
+  },
+  swoopNow() {
+    const T = AFRAME.THREE; $('#cam').object3D.getWorldPosition(this.v);
+    this.p0 = this.v.clone().add(new T.Vector3(8, .1, .35)); this.p1 = this.v.clone().add(new T.Vector3(-8, 0, -.35));
+    this.swT = 0; this.sw.visible = true; caw();
+  },
+  heliNow() { this.heliT = 0; heliSound(14); },
+  tick(t, dt) {
+    const up = state === 'up' || state === 'falling';
+    this.clouds.children.forEach(g => { g.position.x += dt * .004; if (g.position.x > 340) g.position.x = -340; });
+    this.birds.forEach(b => {
+      const u = b.userData; u.a += u.sp * dt; b.visible = up;
+      b.position.set(Math.cos(u.a) * u.rad, u.h + Math.sin(u.a * 3) * 1.2, -2 + Math.sin(u.a) * u.rad); b.rotation.y = -u.a;
+      const f = Math.sin(t * .02 + u.a * 5) * .6; u.lw.rotation.z = f; u.rw.rotation.z = -f;
+    });
+    if (this.swT >= 0) {
+      this.swT += dt / 1800;
+      if (this.swT >= 1) { this.swT = -1; this.sw.visible = false; }
+      else { this.sw.position.lerpVectors(this.p0, this.p1, this.swT); this.sw.rotation.y = -Math.PI / 2; const f = Math.sin(t * .04) * .8; this.sw.userData.lw.rotation.z = f; this.sw.userData.rw.rotation.z = -f; }
+    }
+    if (this.heliT >= 0) {
+      this.heliT += dt / 14000;
+      if (this.heliT >= 1) { this.heliT = -1; this.heli.visible = false; }
+      else { this.heli.visible = true; this.heli.position.set(-260 + 520 * this.heliT, 14, -110); this.rotor.rotation.y += dt * .05; }
+    }
+    if (!this.pl) this.pl = $('#plank'); if (this.pl) this.pl.object3D.rotation.z = up ? Math.sin(t / 650) * .006 : 0;
+  }
+});
+setInterval(() => { const L = $('a-scene').components.life; if (L && state === 'up' && Math.random() < .55) L.swoopNow(); }, 9000);
+setInterval(() => { const L = $('a-scene').components.life; if (L && state === 'up' && L.heliT < 0 && Math.random() < .4) L.heliNow(); }, 20000);
 
 /* ---------- HIRM: südamelöögid + äärte tumenemine ---------- */
 (function () {
@@ -235,20 +312,27 @@ AFRAME.registerComponent('stick-move', {
   }
 });
 
-/* ---------- LINN ---------- */
+/* ---------- LINN (valgustatud akendega) ---------- */
 (function () {
-  let seed = 7; const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const city = $('#city');
-  for (let i = 0; i < 420; i++) {
-    const ang = r() * Math.PI * 2, dist = 18 + r() * 600;
-    const h = 15 + r() * (dist > 120 ? 500 : 300), w = 6 + r() * 26;
-    const b = document.createElement('a-box');
-    b.setAttribute('position', `${Math.cos(ang) * dist} ${h / 2} ${Math.sin(ang) * dist}`);
-    b.setAttribute('width', w); b.setAttribute('depth', w); b.setAttribute('height', h);
-    const g = 90 + Math.floor(r() * 90);
-    b.setAttribute('color', `rgb(${g},${g + 8},${g + 18})`);
-    city.appendChild(b);
+  const T = AFRAME.THREE, cv = $('#winTex'), c = cv.getContext('2d'), city = $('#city');
+  let sd = 7; const r = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+  c.fillStyle = '#586075'; c.fillRect(0, 0, 128, 128);
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
+    c.fillStyle = r() < .38 ? (r() < .5 ? '#ffd27a' : '#fff0b8') : '#1d2536'; c.fillRect(i * 32 + 7, j * 32 + 8, 18, 16);
   }
+  const base = new T.CanvasTexture(cv); base.wrapS = base.wrapT = T.RepeatWrapping;
+  if (T.SRGBColorSpace) base.colorSpace = T.SRGBColorSpace;
+  const geo = new T.BoxGeometry(1, 1, 1), redM = new T.MeshBasicMaterial({ color: 0xff2020 }), redG = new T.SphereGeometry(1.6, 8, 6);
+  for (let i = 0; i < 420; i++) {
+    const ang = r() * Math.PI * 2, dist = 18 + r() * 600, h = 15 + r() * (dist > 120 ? 500 : 300), w = 6 + r() * 26;
+    const t = base.clone(); t.needsUpdate = true; t.repeat.set(w / 16, h / 16); t.offset.set(r(), r());
+    const g = (150 + r() * 105) / 255, m = new T.Mesh(geo, new T.MeshBasicMaterial({ map: t, color: new T.Color(g, g, g * 1.05) }));
+    m.scale.set(w, h, w); m.position.set(Math.cos(ang) * dist, h / 2, Math.sin(ang) * dist); city.object3D.add(m);
+    if (h > 200) { const l = new T.Mesh(redG, redM); l.position.set(m.position.x, h + 2, m.position.z); city.object3D.add(l); }
+  }
+  const sk = $('#skyTex').getContext('2d'), gr = sk.createLinearGradient(0, 0, 0, 256);
+  [[0, '#1c2a55'], [.3, '#6a5f92'], [.47, '#e0997d'], [.5, '#c99a8e'], [1, '#c99a8e']].forEach(([o, col]) => gr.addColorStop(o, col));
+  sk.fillStyle = gr; sk.fillRect(0, 0, 16, 256);
 })();
 
 /* ---------- LIFT (vilgub, väriseb, jõnksatab) ---------- */
@@ -320,7 +404,7 @@ $('#rig').addEventListener('animationcomplete__fall', () => {
 
 function restart() {   // nagu mängus: uuesti algusest
   const rig = $('#rig'), city = $('#city'), door = $('#door');
-  rig.removeAttribute('animation__fall'); setPos(rig, 0, 0, 0);
+  rig.removeAttribute('animation__fall'); recenter();
   ['animation__up1', 'animation__up2'].forEach(a => city.removeAttribute(a)); setPos(city, 0, 0, 0);
   door.removeAttribute('animation__open'); setPos(door, 0, 1.25, -1.2); resetCat();
   $('#btn').setAttribute('color', '#d22'); $('#floor').setAttribute('value', 'Korrus 0');
@@ -336,16 +420,17 @@ $('a-scene').addEventListener('loaded', () => {
   setInterval(() => {
     cam.getWorldPosition(v);
     const rig = $('#rig').object3D.position;
-    if (state === 'idle' || state === 'ascending' || state === 'descending') { fear = 0; if (Math.abs(v.x) > 1.0 || Math.abs(v.z) > 1.0) setPos($('#rig'), 0, 0, 0); return; }
+    if (state === 'idle' || state === 'ascending' || state === 'descending') { fear = 0; if (Math.abs(v.x) > 1.0 || Math.abs(v.z) > 1.0) recenter(); return; }
     if (state !== 'up') { fear = state === 'falling' ? 1 : 0; return; }
     const inLift = !liftGone && Math.abs(v.x) < 1.2 && v.z > -1.2 && v.z < 1.2;
-    const onPlank = Math.abs(v.x) < 0.25 && v.z <= -1.2 && v.z > -5.8;
+    const onPlank = Math.abs(v.x) < 0.18 && v.z <= -1.2 && v.z > -3.5;
     if (!inLift && !onPlank) { fall(); return; }
-    fear = rescued ? 1 : onPlank ? .25 + .75 * Math.min(1, Math.max(0, (-v.z - 1.2) / 4.3)) : 0;
-    catDist = Math.hypot(v.x, v.z + 5.3);
-    if (!rescued && catDist < 0.8) rescue();
+    fear = rescued ? 1 : onPlank ? .25 + .75 * Math.min(1, Math.max(0, (-v.z - 1.2) / 2.2)) : 0;
+    catDist = Math.hypot(v.x, v.z + 3.0);
+    if (!rescued && catDist < 0.7) rescue();
     if (ambWind) ambWind.g.gain.setTargetAtTime(.05 + .15 * fear, AC.currentTime, .3);
     if (onPlank && Math.random() < .03) creak();
+    if (onPlank && fear > .5 && Math.random() < .012) crack();
   }, 100);
 });
 </script>
